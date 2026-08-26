@@ -1,0 +1,422 @@
+// Florinsta.ae — Production schema
+// Money is stored as Int (fils, minor units of AED) everywhere to avoid float rounding bugs.
+// 1 AED = 100 fils. Display layer divides by 100.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------- Enums ----------
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY_FOR_DELIVERY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum FulfillmentStatus {
+  UNFULFILLED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+}
+
+enum InventoryTxnType {
+  PURCHASE
+  SALE
+  RESERVATION
+  RELEASE
+  ADJUSTMENT
+  RETURN
+  CANCELLATION
+}
+
+// ---------- Auth / Admin ----------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  passwordHash  String
+  role          UserRole  @default(STAFF)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  auditLogs     AuditLog[]
+
+  @@index([email])
+}
+
+// ---------- Customers ----------
+
+model Customer {
+  id          String    @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String    @unique
+  phone       String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  addresses     CustomerAddress[]
+  orders        Order[]
+  couponUsages  CouponUsage[]
+
+  @@index([email])
+  @@index([phone])
+}
+
+model CustomerAddress {
+  id                    String   @id @default(cuid())
+  customerId            String
+  customer              Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  label                 String
+  recipientName         String
+  phone                 String
+  addressLine1          String
+  addressLine2          String?
+  area                  String
+  city                  String
+  emirate               String
+  country               String   @default("United Arab Emirates")
+  latitude              Float?
+  longitude             Float?
+  deliveryInstructions  String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([customerId])
+}
+
+// ---------- Catalog ----------
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  image       String?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products    Product[]
+
+  @@index([slug])
+}
+
+model Product {
+  id                     String        @id @default(cuid())
+  categoryId             String
+  category               Category      @relation(fields: [categoryId], references: [id])
+  name                   String
+  slug                   String        @unique
+  shortDescription       String?
+  description            String
+  priceMinor             Int           // AED fils
+  compareAtPriceMinor    Int?
+  currency               String        @default("AED")
+  sku                    String        @unique
+  mainImage              String
+  status                 ProductStatus @default(PUBLISHED)
+  isFeatured             Boolean       @default(false)
+  isAvailable            Boolean       @default(true)
+  stockTrackingEnabled   Boolean       @default(true)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  images        ProductImage[]
+  options       ProductOptionGroup[]
+  inventory     InventoryItem?
+  orderItems    OrderItem[]
+  inventoryTxns InventoryTransaction[]
+
+  @@index([categoryId])
+  @@index([slug])
+  @@index([status])
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String?
+  sortOrder Int      @default(0)
+
+  @@index([productId])
+}
+
+// e.g. group "Size" -> values Standard/Premium/Luxury, each with a price delta
+model ProductOptionGroup {
+  id        String              @id @default(cuid())
+  productId String
+  product   Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String              // e.g. "Size", "Colour theme"
+  required  Boolean             @default(true)
+  sortOrder Int                 @default(0)
+  values    ProductOptionValue[]
+
+  @@index([productId])
+}
+
+model ProductOptionValue {
+  id                String              @id @default(cuid())
+  groupId           String
+  group             ProductOptionGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  label             String              // e.g. "Luxury"
+  priceDeltaMinor   Int                 @default(0)
+  sortOrder         Int                 @default(0)
+
+  @@index([groupId])
+}
+
+model InventoryItem {
+  id                String   @id @default(cuid())
+  productId         String   @unique
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity          Int      @default(0)
+  reservedQuantity  Int      @default(0)
+  lowStockThreshold Int      @default(5)
+  updatedAt         DateTime @updatedAt
+}
+
+model InventoryTransaction {
+  id            String            @id @default(cuid())
+  productId     String
+  product       Product           @relation(fields: [productId], references: [id])
+  type          InventoryTxnType
+  quantity      Int               // signed: positive = increase, negative = decrease
+  referenceType String?           // e.g. "Order"
+  referenceId   String?
+  notes         String?
+  createdAt     DateTime          @default(now())
+
+  @@index([productId])
+  @@index([referenceType, referenceId])
+}
+
+// ---------- Orders ----------
+
+model Order {
+  id                      String            @id @default(cuid())
+  orderNumber             String            @unique // e.g. FLR-10001
+  customerId              String
+  customer                Customer          @relation(fields: [customerId], references: [id])
+  status                  OrderStatus       @default(PENDING)
+  paymentStatus           PaymentStatus     @default(PENDING)
+  fulfillmentStatus       FulfillmentStatus @default(UNFULFILLED)
+
+  subtotalMinor           Int
+  discountMinor           Int               @default(0)
+  deliveryFeeMinor        Int               @default(0)
+  taxMinor                Int               @default(0)
+  totalMinor              Int
+  currency                String            @default("AED")
+
+  deliveryDate            DateTime
+  deliveryTimeSlotId      String?
+  deliveryTimeSlot        DeliverySlot?     @relation(fields: [deliveryTimeSlotId], references: [id])
+  deliveryInstructions    String?
+  recipientName           String
+  recipientPhone          String
+  deliveryAddressSnapshot Json              // frozen copy of address at time of order
+
+  couponId                String?
+  coupon                  Coupon?           @relation(fields: [couponId], references: [id])
+
+  notes                   String?
+
+  // secure tracking (separate from the human-friendly order number)
+  trackingToken           String            @unique @default(cuid())
+
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  items          OrderItem[]
+  payments       Payment[]
+  couponUsage    CouponUsage?
+  auditLogs      AuditLog[]
+
+  @@index([customerId])
+  @@index([orderNumber])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id                String   @id @default(cuid())
+  orderId           String
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId         String?
+  product           Product? @relation(fields: [productId], references: [id])
+  productNameSnapshot String
+  skuSnapshot       String
+  unitPriceMinor    Int
+  quantity          Int
+  totalMinor        Int
+  selectedOptions   Json?    // [{group:"Size", value:"Luxury", priceDeltaMinor:5000}]
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// ---------- Payments ----------
+
+model Payment {
+  id                String        @id @default(cuid())
+  orderId           String
+  order             Order         @relation(fields: [orderId], references: [id])
+  provider          String        // "ziina" | "tabby" | "stripe" ...
+  providerPaymentId String?       @unique
+  amountMinor       Int
+  currency          String        @default("AED")
+  status            PaymentStatus @default(PENDING)
+  paidAt            DateTime?
+  refundedAmountMinor Int         @default(0)
+  metadata          Json?         // safe, non-sensitive provider metadata only
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([orderId])
+  @@index([providerPaymentId])
+}
+
+// idempotency ledger for provider webhooks — never process the same event twice
+model WebhookEvent {
+  id            String   @id @default(cuid())
+  provider      String
+  eventId       String   // provider's unique event id
+  eventType     String
+  processedAt   DateTime @default(now())
+  payloadHash   String
+
+  @@unique([provider, eventId])
+}
+
+// ---------- Coupons ----------
+
+model Coupon {
+  id                  String     @id @default(cuid())
+  code                String     @unique
+  type                CouponType
+  value               Int        // percentage points, or fixed amount in minor units
+  minimumOrderMinor   Int?
+  maximumDiscountMinor Int?
+  startsAt            DateTime?
+  expiresAt           DateTime?
+  usageLimit          Int?       // total uses across all customers
+  perCustomerLimit    Int?       @default(1)
+  usageCount          Int        @default(0)
+  isActive            Boolean    @default(true)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  orders      Order[]
+  usages      CouponUsage[]
+
+  @@index([code])
+}
+
+model CouponUsage {
+  id             String   @id @default(cuid())
+  couponId       String
+  coupon         Coupon   @relation(fields: [couponId], references: [id])
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id])
+  orderId        String   @unique
+  order          Order    @relation(fields: [orderId], references: [id])
+  discountMinor  Int
+  createdAt      DateTime @default(now())
+
+  @@index([couponId])
+  @@index([customerId])
+}
+
+// ---------- Delivery ----------
+
+model DeliveryZone {
+  id            String  @id @default(cuid())
+  name          String
+  area          String
+  emirate       String
+  feeMinor      Int
+  minimumOrderMinor Int @default(0)
+  isActive      Boolean @default(true)
+}
+
+model DeliverySlot {
+  id         String   @id @default(cuid())
+  name       String   // e.g. "Morning (9am - 12pm)"
+  startTime  String   // "09:00"
+  endTime    String   // "12:00"
+  maxOrders  Int      @default(50)
+  isActive   Boolean  @default(true)
+
+  orders     Order[]
+}
+
+// ---------- Settings / Audit ----------
+
+model SiteSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String   // e.g. "ORDER_STATUS_CHANGED"
+  entity    String   // e.g. "Order"
+  entityId  String
+  orderId   String?
+  order     Order?   @relation(fields: [orderId], references: [id])
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([userId])
+}
