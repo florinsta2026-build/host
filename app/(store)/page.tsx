@@ -3,6 +3,8 @@ import Link from "next/link";
 import { getFeaturedProducts, getCategories } from "@/lib/db/products";
 import { ProductCard } from "@/components/product/product-card";
 
+export const revalidate = 60;
+
 export default async function HomePage() {
   const [products, categories] = await Promise.all([
     getFeaturedProducts(8),
@@ -55,7 +57,16 @@ export default async function HomePage() {
               href={`/shop?category=${c.slug}`}
               className="relative rounded-[22px] overflow-hidden aspect-[16/9] bg-sage flex items-end p-6 group"
             >
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+              {c.image && (
+                <Image
+                  src={c.image}
+                  alt=""
+                  fill
+                  sizes="(max-width: 640px) 100vw, 50vw"
+                  className="object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
               <h3 className="relative serif text-2xl text-white">{c.name}</h3>
             </Link>
           ))}

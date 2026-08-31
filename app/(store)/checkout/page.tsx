@@ -1,6 +1,8 @@
 import { getActiveDeliverySlots } from "@/lib/db/delivery";
 import { CheckoutForm } from "@/components/checkout/checkout-form";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = { title: "Checkout" };
 
 export default async function CheckoutPage() {

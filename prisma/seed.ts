@@ -8,22 +8,24 @@ async function main() {
   console.log("Seeding categories...");
   const bouquets = await prisma.category.upsert({
     where: { slug: "bouquets" },
-    update: {},
+    update: { image: "/assets/img/x21.webp" },
     create: {
       name: "Bouquets",
       slug: "bouquets",
       description: "Hand-tied luxury bouquets from our Dubai atelier.",
+      image: "/assets/img/x21.webp",
       sortOrder: 0,
     },
   });
 
   const baskets = await prisma.category.upsert({
     where: { slug: "baskets" },
-    update: {},
+    update: { image: "/assets/img/x52.webp" },
     create: {
       name: "Baskets & Arrangements",
       slug: "baskets",
       description: "Curated basket arrangements for gifting and events.",
+      image: "/assets/img/x52.webp",
       sortOrder: 1,
     },
   });

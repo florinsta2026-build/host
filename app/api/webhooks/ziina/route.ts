@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import crypto from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 import { getPaymentProvider } from "@/lib/payments";
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
     if (verified?.status === "paid") {
       await tx.payment.update({
         where: { id: payment.id },
-        data: { status: "PAID", paidAt: new Date(), metadata: verified.raw },
+        data: { status: "PAID", paidAt: new Date(), metadata: verified.raw as Prisma.InputJsonValue },
       });
       await tx.order.update({
         where: { id: payment.orderId },

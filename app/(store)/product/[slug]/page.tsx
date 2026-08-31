@@ -6,6 +6,8 @@ import { AddToCartForm } from "@/components/product/add-to-cart-form";
 import { ProductCard } from "@/components/product/product-card";
 import { formatMoney } from "@/lib/utils/money";
 
+export const revalidate = 60;
+
 export async function generateMetadata({
   params,
 }: {
