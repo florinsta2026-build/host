@@ -34,7 +34,10 @@ export function ProductCard({ product }: { product: CardProduct }) {
       <div className="p-4">
         <h3 className="serif text-lg leading-snug">{product.name}</h3>
         <p className="mt-1 text-[.85rem] text-ink-soft">
-          from {formatMoney(product.priceMinor, product.currency)}
+          {/* Zero price = quoted item (event work), never "from AED 0" */}
+          {product.priceMinor === 0
+            ? "Contact for quote"
+            : `from ${formatMoney(product.priceMinor, product.currency)}`}
         </p>
       </div>
     </Link>

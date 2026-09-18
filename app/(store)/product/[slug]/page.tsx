@@ -68,26 +68,49 @@ export default async function ProductPage({
           <span className="eyebrow">{product.category.name}</span>
           <h1 className="text-[clamp(2rem,3.4vw,2.8rem)] mt-2">{product.name}</h1>
           <p className="mt-3 text-ink-soft">{product.description}</p>
-          <p className="mt-4 serif text-2xl">{formatMoney(product.priceMinor, product.currency)}</p>
+          {/* A zero price means the item is quoted rather than sold off the shelf —
+              event installations, arches, balloon styling. Never show "AED 0", and never
+              offer an add-to-cart for one; the checkout API refuses them server-side too. */}
+          {product.priceMinor === 0 ? (
+            <>
+              <p className="mt-4 serif text-2xl">Contact for quote</p>
+              <p className="mt-3 text-sm text-ink-soft">
+                Event work is priced individually. Tell us your date, venue and what you have in
+                mind, and we&apos;ll come back to you with a quote.
+              </p>
+              <a
+                href={`https://wa.me/971568743084?text=${encodeURIComponent(
+                  `Hello Florinsta! I'd like a quote for "${product.name}".`,
+                )}`}
+                className="mt-6 inline-flex items-center px-7 py-3 rounded-full bg-rose-deep text-white text-sm tracking-wide hover:bg-ink transition-colors"
+              >
+                Enquire on WhatsApp
+              </a>
+            </>
+          ) : (
+            <>
+              <p className="mt-4 serif text-2xl">{formatMoney(product.priceMinor, product.currency)}</p>
 
-          <AddToCartForm
-            productId={product.id}
-            slug={product.slug}
-            name={product.name}
-            image={product.mainImage}
-            priceMinor={product.priceMinor}
-            currency={product.currency}
-            optionGroups={product.options.map((g) => ({
-              id: g.id,
-              name: g.name,
-              required: g.required,
-              values: g.values.map((v) => ({
-                id: v.id,
-                label: v.label,
-                priceDeltaMinor: v.priceDeltaMinor,
-              })),
-            }))}
-          />
+              <AddToCartForm
+                productId={product.id}
+                slug={product.slug}
+                name={product.name}
+                image={product.mainImage}
+                priceMinor={product.priceMinor}
+                currency={product.currency}
+                optionGroups={product.options.map((g) => ({
+                  id: g.id,
+                  name: g.name,
+                  required: g.required,
+                  values: g.values.map((v) => ({
+                    id: v.id,
+                    label: v.label,
+                    priceDeltaMinor: v.priceDeltaMinor,
+                  })),
+                }))}
+              />
+            </>
+          )}
         </div>
       </div>
 

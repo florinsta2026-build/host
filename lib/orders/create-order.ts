@@ -41,6 +41,16 @@ export async function createPendingOrder(input: CheckoutInput) {
         throw new CheckoutError(`"${product?.name ?? "An item"}" in your cart is no longer available.`, "PRODUCT_UNAVAILABLE");
       }
 
+      // A zero price marks a quote-only item (event installations, arches, balloon styling).
+      // The storefront offers an enquiry link instead of add-to-cart, but that is only the UI —
+      // refuse it here too, or a crafted request could order event work for nothing.
+      if (product.priceMinor <= 0) {
+        throw new CheckoutError(
+          `"${product.name}" is priced on enquiry and cannot be bought online. Please contact us for a quote.`,
+          "PRODUCT_QUOTE_ONLY",
+        );
+      }
+
       let unitPriceMinor = product.priceMinor;
       const selectedOptions: { group: string; value: string; priceDeltaMinor: number }[] = [];
 
